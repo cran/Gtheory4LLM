@@ -1,0 +1,47 @@
+Package: Gtheory4LLM
+Type: Package
+Title: Generalizability Theory for LLM Subjective Tasks
+Version: 0.2.0
+Authors@R: person("Jin", "Liu", email = "Veronica.Liu0206@gmail.com",
+    role = c("aut", "cre", "cph"))
+Author: Jin Liu [aut, cre, cph]
+Maintainer: Jin Liu <Veronica.Liu0206@gmail.com>
+Description: Studies the reliability and generalizability of subjective
+    judgments produced by large language models (LLMs), including annotation,
+    rating, and structured LLM-as-a-judge tasks. Specifies evaluator, prompt,
+    generation, and repeated-run facets through crossed or explicitly nested
+    random sources with configurable item interactions. Fits univariate models,
+    joint Gaussian models, and joint discrete models for binary, ordinal, and
+    unordered categorical outcomes, with source-specific covariance. Gaussian
+    models use exact balanced likelihood; discrete models use a dense
+    first-order Laplace approximation with Gaussian latent random effects.
+    Supported balanced decision studies compare evaluator, prompt, and
+    replication allocations using observed Gaussian or explicitly requested
+    latent binary and ordinal reliability, with random or fixed facets after
+    Brennan (2001). Gaussian fits report asymptotic Wald standard errors for
+    their variance components and delta-method intervals for the coefficients;
+    discrete fits report point estimates only. Scalar nominal reliability and
+    joint Gaussian-discrete fitting are not implemented. Includes three publicly
+    archived LLM annotation datasets covering hate-speech, mental-health,
+    and drug-review tasks. Discrete fitting is limited to small models; the
+    preflight report describes supported designs and computational limits.
+    Generalizability coefficients follow the variance-decomposition framework
+    of Brennan (2001) <doi:10.1007/978-1-4757-3456-0>.
+License: GPL-3
+Encoding: UTF-8
+Depends: R (>= 4.5.0)
+Imports: Matrix (>= 1.6.0), OpenMx (>= 2.22.11), graphics, methods,
+        stats, utils
+Suggests: lme4, ordinal, knitr, rmarkdown
+VignetteBuilder: knitr
+URL: https://github.com/Veronica0206/Gtheory4LLM
+BugReports: https://github.com/Veronica0206/Gtheory4LLM/issues
+Collate: 'design.R' 'family.R' 'gaussian_retry.R' 'gaussian_engine.R'
+        'gaussian.R' 'discrete_response.R' 'discrete_dense.R'
+        'discrete_sparse.R' 'discrete_mode.R' 'discrete_sparse_mode.R'
+        'discrete.R' 'preflight.R' 'diagnostics_stages.R' 'fit.R'
+        'methods.R' 'reliability.R' 'examples.R'
+NeedsCompilation: no
+Packaged: 2026-09-23 03:32:10 UTC; runner
+Repository: CRAN
+Date/Publication: 2026-10-04 09:30:02 UTC
