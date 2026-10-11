@@ -1,3 +1,324 @@
+# Gtheory4LLM 0.5.0 — Study Planning
+
+<!-- release-identity:start -->
+Source version: **0.5.0**.
+For versioned archives, manuals and publication status, see the
+[repository manifest](https://github.com/Veronica0206/Gtheory4LLM/blob/main/artifacts/manifest.json)
+and [GitHub releases](https://github.com/Veronica0206/Gtheory4LLM/releases).
+These repository records are excluded from the package archive; this source
+version does not assert that a corresponding release has been published.
+<!-- release-identity:end -->
+
+This version adds bounded study-planning tools. Historical release assets and
+the numerical acceptance rules are unchanged.
+
+- `gt_batch_reliability()` and `gt_batch_dstudy()` project item-score, named
+  contrast and aggregate error under a fitted equal fixed Gaussian batching
+  layout. Targets are conditional on that layout; no new-batch-size effect or
+  universal batch-adjusted G is inferred.
+- `gt_plan()` enumerates supplied allocation grids and ranks them using dated,
+  user-supplied cost assumptions, constraints and point or available lower-bound
+  targets. It retains infeasible candidates, Pareto options and baseline
+  marginal benefits without changing the declared score universe.
+- `gt_simulate()` generates balanced Gaussian studies and `gt_pilot_plan()`
+  refits prospective pilot designs, retaining all attempts, numerical refusals,
+  interval availability and Monte Carlo uncertainty. These are model-based
+  design simulations, not calibrated bootstrap intervals or coverage guarantees.
+- Batch D-study data frames retain allocation counts and essential interpretation
+  fields in ordinary columns, so CSV exports remain interpretable without R
+  attributes. Pilot replicate ledgers retain numerical acceptance-failure codes
+  and the selected refit attempt without retaining whole fit objects.
+- Batch projections preserve distinct numeric item identifiers, including large
+  adjacent values that have the same default printed representation. Use the
+  returned `layout$item` keys to name contrast and aggregate weights. This
+  corrects a false refusal after an otherwise valid fit; covariance estimation
+  and projection arithmetic are unchanged.
+
+# Gtheory4LLM 0.4.1
+
+
+
+0.4.0 was tagged and its bundle staged, but it was not published or submitted:
+its release check on R built without long double refused a fit on one machine
+and the test could not say so. 0.4.1 is 0.4.0 with that test corrected and no
+other change to the package.
+
+- `tests/package-characterization.R` required every discrete case to be
+  numerically accepted. On some machines the discrete optimizer reports
+  completion without reaching a stationary point (#59), the engine refuses the
+  fit through its stationarity and restart-stability safeguards, and the test
+  then stopped at the coefficients it could not compute. The ordinal case, the
+  one case observed to be refused this way, is now reported as that platform's
+  outcome when it is refused by those two safeguards and by nothing else: its
+  estimates are not compared there, but it must still carry every other
+  recorded field, the same model terms and the same variance names. Any other
+  case refused this way, a refusal for any other reason, or accepted numbers
+  that moved still fail. The acceptance and completion flags are recorded as
+  the engine set them, and a fit without a single TRUE or FALSE flag stops the
+  test. The comparison and the recording are exercised with constructed
+  records and fits before any fit is compared. The engine is unchanged.
+
+# Gtheory4LLM 0.4.0
+
+Changes since 0.2.0. The development line was versioned `0.3.0.9000` and then
+`0.4.0.9000`; no 0.3.0 was released. For a design without a batch declaration,
+every estimate, coefficient and acceptance decision in
+`tests/package-characterization.R` reproduces its values: the fitting
+arithmetic is untouched, and the changes add refusals, evidence and reporting.
+The one new model is the shared call effect a Gaussian fit estimates for a
+design that declares equal fixed batches, described first below.
+
+## Check on R built without long double
+
+- CRAN's check of 0.2.0 on R built without long double stopped in
+  `tests/package-discrete-safety.R`, where one ordinal fit on a boundary panel
+  was required to be numerically accepted. On that build the optimizer reports
+  completion without leaving its starting values, and the fit is refused by
+  the stationarity check. Refusing it is the correct outcome; requiring
+  acceptance was the test's error.
+- The test still asserts on every platform what it exists to guard: no
+  evaluation at the variance boundary becomes an attempt error, and the fit
+  uses variance coordinates. Accepted fits must reproduce the reference
+  likelihood and variance components and yield a finite latent coefficient.
+  Other fits must be explicitly rejected, with a nonempty set of reasons
+  consisting only of the stationarity or restart/tolerance-stability
+  safeguards. Movement away from the starting values does not establish
+  numerical acceptance. Constructed records exercise both outcomes and reject
+  missing acceptance flags, empty or unexpected reasons, boundary errors and
+  accepted records with incorrect reference estimates.
+- The optimizer is unchanged. That its search can stall in this way, when an
+  unusable evaluation's penalty value enters a finite-difference gradient, is
+  a limitation of the discrete engine and is not addressed by this release;
+  it is tracked in [issue #59](https://github.com/Veronica0206/Gtheory4LLM/issues/59).
+
+## Declared batches
+
+- `gt_batch()` declares that items were annotated several to a call, and
+  `gt_design()` carries the declaration to every function that receives the
+  design or a fit. With none declared, items are independent given the
+  declared sources and every result is what it was. By default a declaration
+  assumes items in one call affect each other equally; `sequential` and
+  `neighbor`, both off by default, declare that an item may be affected by a
+  stated number of preceding items or of items on either side, at most one
+  less than the batch size. `by` names a facet, such as the evaluator, across
+  whose levels the dependence may differ.
+- Which items shared a call is inferred or recorded. Without `id`, batches are
+  cut from the item order and are the same in every condition; that is a
+  reconstruction, and it cannot detect items removed after collection. With
+  `id` naming a column that identifies each row's call, the calls are read
+  from the data and may differ between conditions and in size.
+- `gt_preflight()` audits a declaration: the batches, conditions and calls it
+  implies or records, whether it describes the data, and, for inferred batches
+  whose rows are stored call by call, whether that storage agrees with it.
+  Implied calls count one for each batch, condition and declared replicate. A
+  call with fewer items present than declared is reported, not treated as a
+  mismatch. Recorded calls are counted from the rows supplied: the audit says
+  that a call sent short and a call that lost rows afterwards look the same,
+  that a call with no row left is not counted, and that positions are ranks
+  among the items present, not necessarily the positions at which they were
+  sent.
+- A Gaussian fit models a declaration when the batches form a complete
+  factorial with the facets: the same batches in every condition, each at the
+  declared size. It estimates one shared call effect, reported as the source
+  `Call` with its standard error, by the exact balanced likelihood, in which
+  an item is a batch-by-slot cell. REML and ML fits match lme4's in criterion
+  and variances, including a call variance of zero. `gt_preflight()` says
+  beforehand whether a fit will model the batches, and why not when it will
+  not; its source table, parameter counts and strata describe the sources the
+  fit will estimate, the call among them. Whether the batches were modelled is
+  recorded for each fit, so a fitted design reused for another outcome family
+  does not carry the earlier fit's answer.
+- A fit with a call effect has no reliability coefficients or decision study
+  yet: the coefficient weights do not account for which items share a call,
+  so `gt_reliability()` and `gt_dstudy()` refuse it. `sequential`, `neighbor`
+  and `by` are recorded and not yet estimated.
+- Every other declaration changes no estimate, and every result says what
+  happened to a declaration: fits and diagnostics print the status,
+  `not_declared`, `declared_not_modelled` with the reason, or `modelled`;
+  coefficients and decision studies print it, their data-frame exports and
+  `gt_dstudy_target()` carry `batch_status`, the plots state it where a
+  caller's own subtitle cannot replace it, and `gt_report()` records it. The
+  exports gain that one column for every design.
+
+## Data checks, reporting and figures
+
+- Outcome profiles describe category frequencies and representation across
+  design groups, including absent declared categories and groups with no
+  observed variation. These are descriptive summaries, not minimum-information
+  rules or guarantees of accurate estimation. Example tables drop unsampled
+  factor levels so bounded or empty tables do not retain hidden identifiers.
+- Portable analysis reports collect model context, diagnostics, result tables
+  and figures without refitting. Exports omit observations and group-level
+  identifiers by default and distinguish retained fitting provenance from the
+  environment used to generate the report. New discrete fits now record their
+  fitting session before retention controls are applied; historical fits with
+  no session record remain unknown.
+- Preflight exposes bounded examples of missing cells and incorrect
+  replication, without constructing the full Cartesian product or editing
+  observations. Its panel-audit plot distinguishes complete, missing,
+  under-replicated and over-replicated cells; a second view shows random-source
+  dimensions. Counts are relative to observed coded levels.
+- Reliability and D-study results have flat `as.data.frame()` methods.
+  Allocation columns are prefixed, and D-study metadata is joined by design
+  identity. Scale, extrapolation and uncertainty status travel with exported
+  estimates, including unavailable intervals.
+- `gt_dstudy_target()` screens one outcome or composite against an estimated
+  G/Phi target within the supplied allocation grid. It preserves all candidates
+  and ties; it does not search for a global or monetary optimum.
+- Reliability forest plots show G/Phi and available estimation intervals.
+  D-study plots add target references, series selection and extrapolation
+  markers. These displays use base graphics and can be saved with ordinary
+  PNG/PDF devices. The installed tutorial demonstrates the plots and exports.
+- A separately frozen 40-fit binary/ordinal probit pilot retains every attempt:
+  38 accepted, one numerical rejection and one missing-category error.
+  Rare-outcome point recovery can be poor despite acceptance. This is a small
+  dense-engine study with explicit Monte Carlo uncertainty, not sparse
+  qualification, a coverage study or a general operating-range claim.
+
+## Numerical safety
+
+- The private sparse conditional solver enforces the same two validity
+  invariants as the dense one (#46). The Newton step is checked against its own
+  system by the shared backward-error rule, applied to the sparse Hessian
+  without densifying it, and the final factor is probed with the same two fixed
+  vectors before its log determinant enters the objective, through the factor
+  object's permutation-aware solve. A violated invariant refuses with
+  `sparse_newton_solve_invalid` or `sparse_final_factor_invalid`, exactly as the
+  dense solver refuses; there is no fallback, regularization or looser
+  tolerance. `tests/test_discrete_sparse_validity.R` injects a corrupted step
+  and a factor of a different matrix and checks the refusal, its reason and
+  its retained measurements, on the sparse mode solver and end to end through
+  the private evaluator seam. The frozen fixed-parameter, conditional-mode and
+  fitted sparse contracts reproduce unchanged with the checks in place.
+- A discrete fit's starting-value refusal reports the evidence of the
+  evaluation that refused (#43). The start is evaluated once, in detailed form,
+  and there is no diagnostic replay: a second evaluation that happened to
+  succeed would not be evidence that the first was valid, and one that failed
+  would only describe itself. The established message and its `reason=`,
+  `backward_error=`, `solve_validity_bound=`, `random_dimension=` and
+  `probe_index=` fields are unchanged.
+- Every objective evaluation the optimizer makes is performed in detailed form
+  and reduced to its scalar by a bounded evaluation log, so an evaluation the
+  optimizer could not use is described by its own record rather than by a
+  recomputation. `fit$diagnostics$evaluations` records the count of
+  evaluations, the count the optimizer could not use, the count of valid
+  conditional solves that ended at the inner iteration budget, and, for at most
+  eight invalid evaluations, the parameters asked about and the measurements
+  reported; the conditional-mode diagnostic stage reports the three counts.
+  The arithmetic is unchanged, because `details` selects what a mode solver
+  returns and never what it computes.
+- Setting the environment variable `GTHEORY_DISCRETE_SPECIMEN_DIR` to a
+  directory writes a specimen file for each refused start and each retained
+  invalid evaluation: the failed operation's matrix, right-hand side, step and
+  factor where the failure produced them, the parameters, the measurements and
+  the identity of the numerical environment, as numeric objects that can be
+  reloaded and replayed. It holds no observations. Off by default; a failed
+  write is reported in the refusal message and never masks the refusal.
+  `SECURITY.md` says so.
+- A conditional solve that did not converge records how it stopped:
+  `inner_iterations`, whether the line search failed to improve the penalised
+  objective (`inner_line_search_failed`) and whether the final factorization
+  was unavailable. Previously a failed evaluation carried no iteration count,
+  so the retained scale-risk profile could not attribute its invalid
+  evaluations; see the replay recorded in
+  `validation-studies/discrete-sparse-profile/results.md`. The profile's work
+  pass now reports those stop causes.
+- `scripts/replay_specimen.R` reads a specimen back and answers three
+  questions separately: whether the stored step still fails the stored
+  system, whether the stored factor still fails on this host, and whether a
+  fresh factorization here fails too. Its verdict describes those observations
+  without inferring a defective matrix, a responsible host, or portability
+  from one replay. Reproducing the recorded backward error also requires
+  agreement at numerical precision and the same solve-validity decision.
+  `tests/test_specimen_replay.R` exercises it on dense and sparse specimens
+  written through the real refusal site.
+- The shared acceptance rule is mutation-checked in `tests/test_interface.R`:
+  the FALSE-only rule it replaced accepts a discrete fixture whose flag is
+  `NA`, and the test proves that its own assertion catches that.
+
+## Corrections
+
+- A specimen of a tightened evaluation records the inner tolerance that
+  evaluation ran with. The evaluation log passed the coarse control to the
+  specimen writer for every phase, so a `tight` specimen reported `1e-7` for an
+  evaluation that ran at `1e-9`. The fit and its acceptance were unaffected.
+- A solve- or factor-validity event is no longer lost behind routine
+  non-converged evaluations. Retained records and specimens shared one
+  allowance of eight, which an ordinary fit can use up on routine failures
+  alone; a later validity event then left only a count. The evaluation log
+  still retains the first eight invalid evaluations and now also retains later
+  validity events until eight such events are held, so it holds at most
+  sixteen records; `fit$diagnostics$evaluations$validity_events` counts every
+  one. These limits and counts cover the optimizer's logged evaluations, not
+  final checks.
+- A final check that fails with a structured refusal keeps that refusal's
+  reason, measurements and parameters in `fit$diagnostics$final_checks`, and
+  writes its failed operation as a specimen when a directory is configured.
+  Only a raised error's text was kept before, so a refusal returned without
+  an error blocked acceptance and left no account of why.
+- A refused stationarity probe keeps the refusing evaluation's record in the
+  same way, in `fit$diagnostics$outer_stationarity$failure`, and writes its
+  failed operation as a specimen when a directory is configured. Its retained
+  error named only "invalid conditional mode"; for a solve- or
+  factor-validity refusal it now also names the reason and its measurements.
+  A probe that merely did not converge keeps the established message.
+- The conditional-mode diagnostic stage reports the count of validity events
+  beside its other evaluation counts.
+- A preflight report no longer keeps the data in its recorded call. Called
+  through `do.call()`, or with the data written inline, `gt_preflight()` stored
+  the whole data frame in `$call`, unused columns included, whatever
+  `max_examples` was. A `data` argument that is not a plain object name is now
+  recorded as a marker, as a fit records it when its data is dropped.
+- Fit summaries match variance-component standard errors and boundary flags
+  by source and outcome separately. Names containing spaces can no longer
+  make distinct source/outcome pairs select the same uncertainty row.
+- The published `0.2.0` archive, manual, manifest and tag are retained
+  unchanged.
+- `plot()` on a decision study accepts `col`, `pch`, `ylim`, `xlab` and `ylab`
+  through `...`. They were supplied explicitly before the dots were forwarded,
+  so passing any of them failed with a duplicate-argument error; they are now
+  defaults that a named argument replaces (#39, plotting).
+- `logLik()`, and through it `AIC()` and `BIC()`, apply the same acceptance
+  rule as `gt_reliability()` and `gt_dstudy()`, from one shared predicate: a
+  Gaussian fit is refused on an explicit failure, and a discrete fit must carry
+  an affirmative acceptance. A discrete object whose acceptance flag is missing
+  or `NA` is refused rather than read as accepted. Freshly fitted objects are
+  unaffected; every fitted discrete object carries the flag.
+- A discrete fit produced through the private evaluator seam by a backend other
+  than the dense one now reports that backend in its public `engine`
+  (`sparse_joint_discrete_laplace`), derived from the retained
+  `marginal_backend`, so a fit never describes itself as the dense engine when
+  another implementation produced it. Dense fits are unchanged, and
+  reliability, decision studies and preflight no longer key on the dense
+  engine string. No public entry point selects the sparse backend.
+
+## Qualification study
+
+- Calibration case K05 (`cal_tail`) was built with the five-level tail-mass
+  construction on a three-level scale, because the level selector recognised
+  the exact geometry name while the panel builder recognised any name
+  containing "tail": its categories were 15/60/165, with 68.75% of the panel in
+  the top category. One explicit definition, `EQ_TAIL_GEOMETRIES`, now serves
+  both, and the freeze test asserts the category composition of every
+  tail-mass panel rather than only its digest. The original and corrected
+  fixture identities are recorded as a pre-calibration amendment in
+  `CALIBRATION.md`; the scored case C12 and every other fixture are unchanged,
+  and no tolerance had been derived from the defective panel.
+- The retained 2,400-row scale-risk specimen was replayed with the failed
+  evaluations' own records: every invalid evaluation was conditional-mode
+  non-convergence, none was a solve or factor validity event, and the
+  backend disagreements were gradients straddling the relaxed final tolerance
+  at the iteration budget in the tightened phase. Recorded in
+  `validation-studies/discrete-sparse-profile/results.md`.
+- The measurement warm starts are conditional on (#5) was taken on that
+  specimen with `budget-experiment.R`: a doubled inner budget recovers 32 of
+  the 48 unusable evaluations and all 40 marginal solves cold, and a warm
+  start from the previous evaluation's mode recovers 38 of 48 at the ordinary
+  budget in a median of 9 iterations; 16 evaluations do not converge cold
+  within 300 iterations and are not a budget question. The roadmap and
+  development status now state the 0.4.0 release gates and this line's
+  position against them.
+
 # Gtheory4LLM 0.2.0
 
 Cut from the 0.2.0 development line for the CRAN resubmission. Every estimate,
@@ -130,15 +451,6 @@ maintenance that followed 0.1.0.
   candidate-check evidence applies to the file actually checked.
 - Catches stale publication claims outside the release summary blocks and
   records the active rule preventing release-tag updates and deletions.
-
-<!-- release-identity:start -->
-Source version: **0.2.0**.
-For versioned archives, manuals and publication status, see the
-[repository manifest](https://github.com/Veronica0206/Gtheory4LLM/blob/main/artifacts/manifest.json)
-and [GitHub releases](https://github.com/Veronica0206/Gtheory4LLM/releases).
-These repository records are excluded from the package archive; this source
-version does not assert that a corresponding release has been published.
-<!-- release-identity:end -->
 
 # Gtheory4LLM 0.1.0
 

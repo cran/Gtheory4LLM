@@ -14,6 +14,72 @@
   do.call(paste, c(unname(codes), list(sep = ":")))
 }
 
+# Carried by every design that declares a batch. Whether a fit can use the
+# declaration depends on the data and the outcome family, so the note states
+# the rule and each fit states what it did.
+.GT_BATCH_NOTE <- paste("A batch declaration is audited by gt_preflight().",
+  "A Gaussian fit of equal fixed batches estimates one shared call effect;",
+  "any other fit treats items in one call as independent and says so.")
+
+# The source a modelled batch adds to a fit: the items of one batch annotated
+# under one condition share it.
+.GT_CALL_TERM <- "Call"
+
+# The random sources a fit estimates, as opposed to the sources a design
+# requests: the retained declared sources, and the call source when the fit
+# models its batches. Everything that describes a fitted model reads this one
+# list; the design's own terms stay what the user declared, because alias
+# resolution and the reuse of a design with another family depend on them.
+.gt_fitted_sources <- function(design)
+  c(as.character(design$terms), if (isTRUE(design$batch_model$modelled)) .GT_CALL_TERM)
+
+# What a result made from this design can say about its batches. A declared
+# batch is either modelled, with one shared call effect in the fit, or not
+# modelled, with the reason when a fit recorded one. The status travels with
+# every result so that none is read as something it is not. It lives beside
+# the design because every engine loads this file.
+.gt_batch_status <- function(design) {
+  batch <- design$batch
+  if (is.null(batch))
+    return(list(status = "not_declared", size = NA_integer_, membership = NA_character_))
+  model <- design$batch_model
+  modelled <- isTRUE(model$modelled)
+  list(status = if (modelled) "modelled" else "declared_not_modelled", size = batch$size,
+       membership = if (is.null(batch$id)) "inferred" else "recorded",
+       reason = if (modelled || is.null(model$reason)) NA_character_ else model$reason,
+       not_modelled = c(if (batch$sequential) "sequential", if (batch$neighbor) "neighbor",
+                        if (!is.null(batch$by)) "by"))
+}
+
+# A result made before the status existed could not have declared a batch.
+.gt_batch_status_of <- function(x) {
+  status <- x$batch
+  if (is.list(status) && is.character(status$status) && length(status$status) == 1L) status else
+    list(status = "not_declared", size = NA_integer_, membership = NA_character_)
+}
+
+.gt_batch_status_text <- function(status) {
+  if (identical(status$status, "modelled")) {
+    rest <- status$not_modelled
+    return(paste0("Batches of ", status$size, " items modelled (membership ", status$membership,
+      "): one shared call effect, reported as source ", .GT_CALL_TERM, ".",
+      if (length(rest)) paste0(" Declared but not yet used: ", paste(rest, collapse = ", "), ".") else ""))
+  }
+  if (!identical(status$status, "declared_not_modelled")) return(NULL)
+  reason <- status$reason
+  paste0("Batches of ", status$size, " items declared (membership ", status$membership,
+         ") but not modelled: items in one call are treated as independent.",
+         if (length(reason) == 1L && !is.na(reason)) paste0(" Reason: ", reason, ".") else "")
+}
+
+# Drawn in the margin rather than offered as a default subtitle, so that a
+# caller's own subtitle cannot remove it.
+.gt_batch_status_margin <- function(x) {
+  if (identical(.gt_batch_status_of(x)$status, "declared_not_modelled"))
+    graphics::mtext("Declared batches not modelled", side = 3, line = 0.25, adj = 0, cex = 0.8)
+  invisible(NULL)
+}
+
 .gt_design_names <- function(x, label, allow_empty = FALSE) {
   if (!is.character(x) || (!allow_empty && !length(x)) || anyNA(x) ||
       any(!nzchar(x)) || any(trimws(x) != x) || anyDuplicated(x)) {
@@ -152,13 +218,16 @@
 #   Requested sources are retained here. Fitting validates observed cell counts
 #   and resolves any residual alias according to the response family.
 # max_terms: Upper bound on source expansion, checked before allocation.
+# batch: Optional gt_batch() declaration that items were annotated several to
+#   a call. NULL, the default, leaves items independent given the sources.
 # Returns: A gt_design object retaining all requested terms, expanded nested
 #   groups, and pending family-specific alias and data validation metadata.
 gt_design <- function(object, facets, crossed = facets, nested = NULL,
                       item_interactions = "complete",
                       instrument_interactions = "complete",
                       item_nested = character(), random = NULL,
-                      full_cell = TRUE, replicates = 1L, max_terms = 4096L) {
+                      full_cell = TRUE, replicates = 1L, max_terms = 4096L,
+                      batch = NULL) {
   custom <- !is.null(random)
   explicit_selectors <- !missing(crossed) || !missing(nested) ||
     !missing(item_interactions) || !missing(instrument_interactions) || !missing(item_nested)
@@ -176,6 +245,16 @@ gt_design <- function(object, facets, crossed = facets, nested = NULL,
   if (!integer_scalar(max_terms)) .gt_design_abort("max_terms must be a positive integer.")
   variables <- c(object, facets)
   notes <- c("Specification only: actual data balance, level counts, nesting, kernel rank, and replication have not been validated.")
+  if (!is.null(batch)) {
+    if (!inherits(batch, "gt_batch")) .gt_design_abort("batch must be NULL or created by gt_batch().")
+    if (!is.null(batch$by) && !batch$by %in% facets)
+      .gt_design_abort("The batch declaration's by must name a declared instrumentation facet.")
+    if (!is.null(batch$order) && batch$order %in% variables)
+      .gt_design_abort("The batch declaration's order must be a column other than the object and the facets.")
+    if (!is.null(batch$id) && batch$id %in% variables)
+      .gt_design_abort("The batch declaration's id must be a column other than the object and the facets.")
+    notes <- c(notes, .GT_BATCH_NOTE)
+  }
   expanded <- list(parents = list(), members = list())
   orders <- c(instrument = NA_integer_, item = NA_integer_)
   if (custom) {
@@ -251,7 +330,7 @@ gt_design <- function(object, facets, crossed = facets, nested = NULL,
            " requires family-specific resolution after observed replication is checked."))
   direct <- if (custom) facets[vapply(facets, function(f)
     paste(object, f, sep = ":") %in% keys, logical(1))] else crossed
-  structure(list(
+  design <- structure(list(
     object = object, facets = facets, n_facets = length(facets),
     crossed = crossed, direct_facets = direct, nested = expanded$parents,
     nested_groups = vapply(expanded$members, paste, collapse = ":", FUN.VALUE = character(1)),
@@ -262,6 +341,9 @@ gt_design <- function(object, facets, crossed = facets, nested = NULL,
     aliased_terms = character(), residual = "Residual", replicates = as.integer(replicates),
     construction = construction, validated_data = FALSE, notes = notes
   ), class = "gt_design")
+  # Added only when declared, so a design without one is the object it always was.
+  if (!is.null(batch)) design$batch <- batch
+  design
 }
 
 # Resolve statistical aliases only after the observation family and actual
@@ -285,6 +367,10 @@ gt_design <- function(object, facets, crossed = facets, nested = NULL,
       "Add full_cell = FALSE to the same gt_design() call to drop exactly this source and keep every other requested source, ",
       "or declare the reduced model explicitly, for example ",
       "gt_design('item', 'rater', random = ~ item + rater); adapt names and retain the interactions required by your study.", call. = FALSE)
+  # Whether a fit modelled the declared batches is a fact about that fit. A
+  # design taken from one fit and resolved for another must not carry it over:
+  # each fit records its own.
+  design$batch_model <- NULL
   design$aliased_terms <- if (family == "gaussian") observation_source else character()
   design$terms <- setdiff(requested, design$aliased_terms)
   design$term_members <- members[design$terms]

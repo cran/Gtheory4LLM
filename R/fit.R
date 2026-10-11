@@ -35,8 +35,9 @@ gt_fit <- function(data, outcomes, design, family = gt_family("gaussian"),
   if (all(kinds == "gaussian")) {
     if (is.null(estimator)) estimator <- "REML"
     if (is.null(residual)) residual <- "unstructured"
+    call <- if (is.null(design$batch)) NULL else .gt_batch_model(data, design)
     result <- .gt_fit_gaussian(resolved$data, outcomes, design, estimator,
-                               covariance, residual, control$gaussian)
+                               covariance, residual, control$gaussian, call = call)
   } else {
     if (is.null(estimator)) estimator <- "ML_Laplace"
     if (!identical(estimator, "ML_Laplace"))
@@ -64,12 +65,21 @@ gt_fit <- function(data, outcomes, design, family = gt_family("gaussian"),
   result$family <- families
   result$outcomes <- outcomes
   if (is.null(result$design)) result$design <- design
+  # The Gaussian engine records what it did with a declared batch. No other
+  # engine models one, and that is recorded for this fit whatever state the
+  # design arrived with.
+  if (!is.null(design$batch) && !all(kinds == "gaussian"))
+    result$design$batch_model <- list(modelled = FALSE,
+      reason = "the call effect is estimated for Gaussian outcomes only")
   result$estimator <- estimator
   result$data <- resolved$data
   result$call <- match.call()
   result$N <- nrow(data)
   result$D <- length(outcomes)
   result$control <- control
+  # Record the actual fitting session for both engines before applying retention.
+  # Older saved fits without this record remain unknown to reporting helpers.
+  if (is.null(result[["session"]])) result$session <- utils::sessionInfo()
   # A compact description of the fitted panel, so that reliability and decision
   # studies remain available after the modelled data is dropped. It records
   # what was observed; it never stands in for data that was checked.
@@ -190,7 +200,26 @@ gt_diagnostics <- function(fit) {
        diagnostics = fit$diagnostics, declared_aliases = fit$design$aliased_terms,
        data_validation = fit$design$validation_scope,
        stages = .gt_staged_diagnostics(fit),
+       batch = .gt_batch_status(fit$design),
        notes = fit$design$notes), class = "gt_diagnostics")
+}
+
+# One acceptance rule for every extractor that needs an accepted fit:
+# reliability, decision studies, and the model-selection generics.
+#
+# A Gaussian fit is refused on an explicit failure only. Its acceptance flag is
+# derived from convergence when the fit is assembled, so an older object that
+# lacks the flag is read as not having failed. A discrete fit must carry an
+# affirmative acceptance: its Laplace objective is provisional until the
+# engine's own checks pass, and a missing or NA flag on a discrete object is
+# not evidence that they did. Each extractor reads this one rule rather than
+# interpreting absent evidence its own way.
+.gt_fit_usable <- function(fit) {
+  if (isFALSE(fit$converged) || isFALSE(fit$numerically_accepted)) return(FALSE)
+  families <- vapply(fit$families, `[[`, character(1), "family")
+  discrete <- length(families) > 0L && any(families != "gaussian")
+  if (!discrete) return(TRUE)
+  isTRUE(fit$numerically_accepted)
 }
 
 # Summarize existing engine decisions only. This never reruns or relaxes an
@@ -265,13 +294,16 @@ gt_diagnostics <- function(fit) {
   }
   if (isFALSE(d$numerically_accepted))
     cat("Returned estimates are diagnostic only; reliability and D studies are unavailable.\n")
+  batch <- .gt_batch_status_text(.gt_batch_status_of(d))
+  if (length(batch)) cat(batch, "\n")
 }
 
 print.gt_fit <- function(x, ...) {
   cat("G-theory fit:", length(x$outcomes), "outcome(s),", x$N, "measurement rows\n")
   cat("Families:", paste(vapply(x$families, `[[`, character(1), "family"), collapse = ", "),
       "| Estimator:", x$estimator, "\n")
-  cat("Random sources:", length(x$design$terms), "| Instrumentation facets:", length(x$design$facets), "\n")
+  cat("Random sources:", length(.gt_fitted_sources(x$design)),
+      "| Instrumentation facets:", length(x$design$facets), "\n")
   .gt_print_fit_status(gt_diagnostics(x))
   cat("Inspect gt_diagnostics(fit) for convergence and approximation details.\n")
   invisible(x)
@@ -287,13 +319,15 @@ summary.gt_fit <- function(object, ...) {
   }))
   errors <- object$component_standard_errors
   if (is.data.frame(errors) && nrow(errors) == nrow(variances)) {
-    matched <- match(paste(variances$source, variances$trait),
-                     paste(errors$component, errors$trait))
+    matched <- vapply(seq_len(nrow(variances)), function(i) {
+      match(TRUE, errors$component == variances$source[i] &
+                  errors$trait == variances$trait[i])
+    }, integer(1L))
     variances$std_error <- errors$std_error[matched]
     variances$at_boundary <- errors$at_boundary[matched]
   }
   structure(list(outcomes = object$outcomes, families = object$families,
-       N = object$N, random_sources = length(object$design$terms),
+       N = object$N, random_sources = length(.gt_fitted_sources(object$design)),
        instrumentation_facets = length(object$design$facets),
        estimator = object$estimator, minus2loglik = object$minus2loglik,
        covariance_components = components, variances = variances,
